@@ -13,7 +13,7 @@ wget https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v
 ```python
 python3 -m venv venv
 source venv/bin/activate
-pip install kokoro-onnx fastapi uvicorn ollama soundfile librosa numpy --break-system-packages
+pip install kokoro-onnx fastapi uvicorn ollama soundfile sounddevice librosa numpy faster_whisper --break-system-packages
 ```
 
 # Running The Server

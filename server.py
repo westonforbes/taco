@@ -76,36 +76,51 @@ def furbify(samples, sr, pitch_shift_semitones=6, warble_depth=0.2, warble_rate=
 
 def audio_stream(prompt: str):
     conversation_history.append({"role": "user", "content": prompt})
-    
+
     if KILLER_FURBY_MODE:
         model = "qwen2.5-coder:14b"
         system_prompt = KILLER_FURBY_SYSTEM_PROMPT
     else:
         model = "qwen2.5-coder:14b"
         system_prompt = FURBY_SYSTEM_PROMPT
-    
-    stream = llm.chat(
-        model = model,
-        messages=[{"role": "system", "content": system_prompt}] + conversation_history,
-        stream=True,
-    )
-    full_reply = ""
-    for sentence in sentence_chunks(stream):
-        full_reply += sentence + " "
-        if not sentence:
-            continue
-        # Each packet is a 1-byte type tag ("T" = text, "A" = audio) followed by
-        # a 4-byte length prefix and the payload, so the client can split the
-        # stream back into per-sentence chunks and tell text from audio.
-        # Send the sentence text first so the client can display it while the
-        # audio for it is still being generated.
-        text_bytes = sentence.encode("utf-8")
-        yield b"T" + struct.pack("<I", len(text_bytes)) + text_bytes
-        samples, sr = kokoro.create(sentence, voice=VOICE)
-        furby_samples = furbify(samples, sr)
-        pcm = (furby_samples * 32767).astype(np.int16).tobytes()
-        yield b"A" + struct.pack("<I", len(pcm)) + pcm
-    conversation_history.append({"role": "assistant", "content": full_reply.strip()})
+
+    try:
+        stream = llm.chat(
+            model = model,
+            messages=[{"role": "system", "content": system_prompt}] + conversation_history,
+            stream=True,
+        )
+        full_reply = ""
+        for sentence in sentence_chunks(stream):
+            full_reply += sentence + " "
+            if not sentence:
+                continue
+            # Each packet is a 1-byte type tag ("T" = text, "A" = audio) followed by
+            # a 4-byte length prefix and the payload, so the client can split the
+            # stream back into per-sentence chunks and tell text from audio.
+            # Send the sentence text first so the client can display it while the
+            # audio for it is still being generated.
+            text_bytes = sentence.encode("utf-8")
+            yield b"T" + struct.pack("<I", len(text_bytes)) + text_bytes
+            samples, sr = kokoro.create(sentence, voice=VOICE)
+            furby_samples = furbify(samples, sr)
+            pcm = (furby_samples * 32767).astype(np.int16).tobytes()
+            yield b"A" + struct.pack("<I", len(pcm)) + pcm
+        conversation_history.append({"role": "assistant", "content": full_reply.strip()})
+    except Exception as e:
+        # Without this, an exception here is invisible: the ASGI response has
+        # already started (200 + headers) by the time this generator runs, so
+        # a failure just ends the stream early with no error on either side -
+        # the client gets what looks like a normal, empty, successful reply.
+        import traceback
+        traceback.print_exc()
+        # Drop the dangling user turn so it doesn't poison the next request's
+        # conversation history with an unanswered message.
+        if conversation_history and conversation_history[-1] == {"role": "user", "content": prompt}:
+            conversation_history.pop()
+        error_text = f"[server error: {e}]"
+        error_bytes = error_text.encode("utf-8")
+        yield b"T" + struct.pack("<I", len(error_bytes)) + error_bytes
 
 # Endpoint where we stream the audio response back to the client.
 @app.get("/speak")

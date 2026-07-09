@@ -10,7 +10,7 @@ def speak_prompt(prompt: str ="echo this sentence 'you did not provide a prompt,
     try:
 
         # Perform a GET request to the server's /speak endpoint with the prompt as a query parameter.
-        resp = requests.get(f"{ip_address}:{port}/speak", params={"prompt": prompt}, stream=True)
+        resp = requests.get(f"{ip_address}:{port}/speak", params={"prompt": prompt}, stream=True, timeout=(10, 60))
 
         # Check if the request was successful (status code 200). If not, raise an exception.
         resp.raise_for_status()
@@ -90,9 +90,9 @@ if __name__ == "__main__":
 
     # Parse the script parameters.
     parser = argparse.ArgumentParser(description="This script passes a LLM prompt to a server, the server generates audio from the prompt, and the client plays the audio.")
-    parser.add_argument("--prompt", help="The prompt.")
-    parser.add_argument("--ip", help="The server IP address.")
-    parser.add_argument("--port", help="The server port.", type=int)
+    parser.add_argument("--prompt", default="echo this sentence 'you did not provide a prompt, please try again'.", help="The prompt.")
+    parser.add_argument("--ip", default="http://localhost", help="The server IP address.")
+    parser.add_argument("--port", default=8000, type=int, help="The server port.")
     args = parser.parse_args()
 
     code = speak_prompt(args.prompt, args.ip, args.port)
